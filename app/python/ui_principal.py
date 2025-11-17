@@ -49,3 +49,7 @@ def open_caja(parent):
         ui_caja.open_caja(parent)
     except Exception as e:
         messagebox.showerror('Error', f'No se pudo abrir caja:\n{e}')
+
+
+if __name__ == '__main__':
+    run_app()

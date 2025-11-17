@@ -19,7 +19,7 @@ except ImportError:
 
 # Intentar importar qrcode para generar QR
 try:
-    import qrcode
+    import qrcode # type: ignore
     QRCODE_AVAILABLE = True
 except ImportError:
     QRCODE_AVAILABLE = False
@@ -39,8 +39,9 @@ except ImportError:
     PYZBAR_AVAILABLE = False
 
 
-FACTURAS_DIR = Path(__file__).parent / "facturas"
-FACTURAS_DIR.mkdir(exist_ok=True)
+# Guardar facturas en la carpeta `data/invoices` en la raíz del proyecto
+FACTURAS_DIR = Path(__file__).resolve().parents[2] / "data" / "invoices"
+FACTURAS_DIR.mkdir(parents=True, exist_ok=True)
 
 
 def open_caja(parent):
@@ -456,7 +457,7 @@ def open_caja(parent):
             elements = []
             
             # Encabezado con logo
-            logo_path = Path(__file__).parent.parent / "Logo" / "Logo.png"
+            logo_path = Path(__file__).resolve().parents[2] / "assets" / "logo" / "Logo.png"
             header_data = []
             
             if logo_path.exists():

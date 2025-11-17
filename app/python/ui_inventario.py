@@ -1,6 +1,7 @@
 import tkinter as tk
 from tkinter import ttk, messagebox
 import Conexion
+
 def open_inventario(parent):
     win = tk.Toplevel(parent)
     win.title('Inventario')
@@ -16,10 +17,7 @@ def open_inventario(parent):
     combo_cat.pack(side='left', padx=6)
     def cargar_categorias():
         try:
-            cur = Conexion.conn.cursor()
-            cur.execute('SELECT DISTINCT categoria FROM public."productos" ORDER BY categoria')
-            cats = [r[0] for r in cur.fetchall()]
-            cur.close()
+            cats = Conexion.listar_categorias()
             combo_cat['values'] = [''] + cats
         except Exception as e:
             messagebox.showwarning('Aviso', f'No se pudieron cargar categorías:\n{e}')
@@ -27,6 +25,7 @@ def open_inventario(parent):
     ttk.Button(top_frame, text='Filtrar', command=lambda: cargar_productos(categoria_var.get())).pack(side='left', padx=6)
     ttk.Button(top_frame, text='Mostrar todos', command=lambda: cargar_productos(None)).pack(side='left', padx=6)
     ttk.Button(top_frame, text='Añadir producto', command=lambda: abrir_agregar()).pack(side='right', padx=6)
+    ttk.Button(top_frame, text='Eliminar producto', command=lambda: eliminar_producto_seleccionado()).pack(side='right', padx=6)
     ttk.Button(top_frame, text='Actualizar stock', command=lambda: abrir_actualizar_stock()).pack(side='right', padx=6)
     # Lista de productos
     tree = ttk.Treeview(frame, columns=('id','nombre','categoria','marca','precio','stock','codigo'), show='headings')
@@ -98,6 +97,7 @@ def open_inventario(parent):
             except Exception as e:
                 messagebox.showerror('Error', f'Error al agregar producto:\n{e}')
         ttk.Button(f, text='Agregar', command=agregar).grid(row=len(labels), column=0, columnspan=2, pady=12)
+    
     def abrir_actualizar_stock():
         sel = tree.focus()
         if not sel:
@@ -132,7 +132,37 @@ def open_inventario(parent):
                 messagebox.showerror('Error', f'Error actualizando stock:\n{e}')
         ttk.Button(f, text='Aplicar', command=aplicar).pack(pady=8)
 
+    def eliminar_producto_seleccionado():
+        sel = tree.focus()
+        if not sel:
+            messagebox.showwarning('Seleccionar', 'Selecciona un producto en la lista para eliminarlo')
+            return
+        vals = tree.item(sel, 'values')
+        id_producto = int(vals[0])
+        nombre = vals[1]
+        
+        # Confirmar eliminación
+        respuesta = messagebox.askyesno(
+            'Confirmar eliminación',
+            f'¿Estás seguro de eliminar el producto?\n\nID: {id_producto}\nNombre: {nombre}\n\nEsta acción no se puede deshacer.'
+        )
+        
+        if respuesta:
+            try:
+                ok = Conexion.eliminar_producto(id_producto)
+                if ok:
+                    messagebox.showinfo('Ok', 'Producto eliminado exitosamente')
+                    cargar_categorias()
+                    cargar_productos(categoria_var.get() or None)
+                else:
+                    messagebox.showerror(
+                        'No se puede eliminar', 
+                        'Este producto no puede ser eliminado porque tiene ventas registradas.\n\n'
+                        'Solo se pueden eliminar productos sin historial de ventas.'
+                    )
+            except Exception as e:
+                messagebox.showerror('Error', f'Error al eliminar producto:\n{e}')
+
     win.transient(parent)
     win.grab_set()
     win.focus_force()
-
