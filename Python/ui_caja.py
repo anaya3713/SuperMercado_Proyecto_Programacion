@@ -10,11 +10,19 @@ try:
     from reportlab.lib.pagesizes import letter
     from reportlab.lib import colors
     from reportlab.lib.units import inch
-    from reportlab.platypus import SimpleDocTemplate, Table, TableStyle, Paragraph, Spacer
+    from reportlab.platypus import SimpleDocTemplate, Table, TableStyle, Paragraph, Spacer, Image, PageTemplate, Frame
     from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
+    from reportlab.pdfgen import canvas
     REPORTLAB_AVAILABLE = True
 except ImportError:
     REPORTLAB_AVAILABLE = False
+
+# Intentar importar qrcode para generar QR
+try:
+    import qrcode
+    QRCODE_AVAILABLE = True
+except ImportError:
+    QRCODE_AVAILABLE = False
 
 # Intentar importar OpenCV para cámara
 try:
@@ -22,6 +30,13 @@ try:
     OPENCV_AVAILABLE = True
 except ImportError:
     OPENCV_AVAILABLE = False
+
+# Intentar importar pyzbar para detección de códigos de barras
+try:
+    from pyzbar.pyzbar import decode
+    PYZBAR_AVAILABLE = True
+except ImportError:
+    PYZBAR_AVAILABLE = False
 
 
 FACTURAS_DIR = Path(__file__).parent / "facturas"
@@ -90,35 +105,112 @@ def open_caja(parent):
 
     if OPENCV_AVAILABLE:
         def escanear_camara():
+            """Escanea códigos de barras CODE-128 usando la cámara"""
+            if not PYZBAR_AVAILABLE:
+                messagebox.showerror('Error', 'pyzbar no instalado.\nInstala con: pip install pyzbar')
+                return
+            
             try:
                 cap = cv2.VideoCapture(0)
                 if not cap.isOpened():
                     messagebox.showerror('Error', 'No se pudo acceder a la cámara')
                     return
                 
-                messagebox.showinfo('Cámara', 'Presiona SPACE para capturar o ESC para cancelar')
+                # Configurar resolución de la cámara
+                cap.set(cv2.CAP_PROP_FRAME_WIDTH, 640)
+                cap.set(cv2.CAP_PROP_FRAME_HEIGHT, 480)
+                
                 codigo_escaneado = None
+                frames_sin_codigo = 0
+                
+                # Crear ventana
+                cv2.namedWindow('Escanear Código de Barras CODE-128', cv2.WINDOW_AUTOSIZE)
                 
                 while True:
                     ret, frame = cap.read()
                     if not ret:
                         break
                     
-                    cv2.imshow('Escanear Código de Barras', frame)
+                    # Convertir a escala de grises para mejor detección
+                    gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
+                    
+                    # Detectar códigos de barras
+                    codigos = decode(gray)
+                    
+                    # Procesar códigos encontrados
+                    if codigos:
+                        frames_sin_codigo = 0
+                        for barcode in codigos:
+                            # Decodificar el código
+                            codigo_bytes = barcode.data
+                            codigo_str = codigo_bytes.decode('utf-8') if isinstance(codigo_bytes, bytes) else codigo_bytes
+                            tipo_codigo = barcode.type
+                            
+                            # Filtrar solo CODE-128
+                            if tipo_codigo == 'CODE128':
+                                codigo_escaneado = codigo_str
+                                
+                                # Dibujar rectángulo alrededor del código
+                                (x, y, w, h) = barcode.rect
+                                cv2.rectangle(frame, (x, y), (x + w, y + h), (0, 255, 0), 2)
+                                
+                                # Mostrar el código en el frame
+                                cv2.putText(frame, f"Código: {codigo_str}", (x, y - 10),
+                                          cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 255, 0), 2)
+                                cv2.putText(frame, f"Tipo: {tipo_codigo}", (x, y + h + 20),
+                                          cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 255, 0), 2)
+                    else:
+                        frames_sin_codigo += 1
+                        # Si pasan 5 frames sin detectar código, limpiar el anterior
+                        if frames_sin_codigo > 5:
+                            codigo_escaneado = None
+                    
+                    # Mostrar instrucciones en el frame
+                    cv2.putText(frame, "Presiona SPACE para confirmar o ESC para cancelar", (10, 30),
+                              cv2.FONT_HERSHEY_SIMPLEX, 0.6, (0, 0, 255), 2)
+                    if codigo_escaneado:
+                        cv2.putText(frame, f"Código detectado: {codigo_escaneado}", (10, 70),
+                                  cv2.FONT_HERSHEY_SIMPLEX, 0.7, (0, 255, 0), 2)
+                    
+                    # Mostrar el frame
+                    cv2.imshow('Escanear Código de Barras CODE-128', frame)
+                    
+                    # Capturar teclas
                     key = cv2.waitKey(1) & 0xFF
                     
-                    if key == 27:  # ESC
+                    if key == 27:  # ESC - Cancelar
                         break
-                    elif key == 32:  # SPACE
-                        # Aquí se podría integrar una librería de detección de códigos
-                        # Por ahora, mostramos un prompt
-                        messagebox.showinfo('Cámara', 'Función de escaneo aún en desarrollo')
-                        break
+                    elif key == 32:  # SPACE - Confirmar
+                        if codigo_escaneado:
+                            cap.release()
+                            cv2.destroyAllWindows()
+                            
+                            # Buscar el producto con el código escaneado
+                            try:
+                                prod = Conexion.busqueda_producto(codigo_escaneado)
+                                if prod:
+                                    abrir_dialog_cantidad(prod)
+                                else:
+                                    messagebox.showwarning('No encontrado', f'Producto con código "{codigo_escaneado}" no encontrado en la base de datos')
+                                    search_var.set('')
+                            except Exception as e:
+                                messagebox.showerror('Error', f'Error al buscar producto:\n{e}')
+                            return
+                        else:
+                            messagebox.showwarning('Escaneo', 'No hay código detectado para confirmar')
                 
                 cap.release()
                 cv2.destroyAllWindows()
+                
+            except ImportError:
+                messagebox.showerror('Error', 'pyzbar no instalado.\nInstala con: pip install pyzbar')
             except Exception as e:
-                messagebox.showerror('Error', f'Error con cámara:\n{e}')
+                messagebox.showerror('Error', f'Error con escaneo:\n{e}')
+                try:
+                    cap.release()
+                    cv2.destroyAllWindows()
+                except:
+                    pass
         
         ttk.Button(search_frame, text='Escanear Cámara', command=escanear_camara).pack(side='left', padx=4)
 
@@ -352,100 +444,135 @@ def open_caja(parent):
         try:
             from reportlab.lib.units import inch
             from reportlab.lib.pagesizes import letter
-            from reportlab.platypus import SimpleDocTemplate, Table, TableStyle, Paragraph, Spacer
+            from reportlab.platypus import SimpleDocTemplate, Table, TableStyle, Paragraph, Spacer, Image
             from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
             from reportlab.lib import colors
+            import io
             
             filename = FACTURAS_DIR / f"Factura_{cliente_info['id_venta']:06d}_{datetime.now().strftime('%Y%m%d_%H%M%S')}.pdf"
             
-            doc = SimpleDocTemplate(str(filename), pagesize=letter)
+            doc = SimpleDocTemplate(str(filename), pagesize=letter, topMargin=0.5*inch, bottomMargin=0.5*inch, leftMargin=0.5*inch, rightMargin=0.5*inch)
             styles = getSampleStyleSheet()
-            title_style = ParagraphStyle(
-                'CustomTitle',
-                parent=styles['Heading1'],
-                fontSize=16,
-                textColor=colors.HexColor('#1a1a1a'),
-                spaceAfter=12,
-                alignment=1  # Center
-            )
-            
             elements = []
             
-            # Título
-            elements.append(Paragraph("FACTURA DE VENTA", title_style))
-            elements.append(Spacer(1, 0.2 * inch))
+            # Encabezado con logo
+            logo_path = Path(__file__).parent.parent / "Logo" / "Logo.png"
+            header_data = []
             
-            # Datos del cliente
-            client_data = [
-                ['Factura #', f"{cliente_info['id_venta']:06d}"],
-                ['Fecha', cliente_info['fecha_venta']],
-                ['Hora', cliente_info['hora_venta']],
-                ['Cliente', cliente_info['nombre_cliente']],
-                ['Cédula', cliente_info['cedula_cliente']],
-                ['Método Pago', cliente_info['metodo_pago']],
+            if logo_path.exists():
+                logo = Image(str(logo_path), width=1*inch, height=1*inch)
+                header_table = Table([[logo, f"FACTURA DE VENTA"]], colWidths=[1.2*inch, 4.8*inch])
+                header_table.setStyle(TableStyle([
+                    ('ALIGN', (0, 0), (0, 0), 'LEFT'),
+                    ('ALIGN', (1, 0), (1, 0), 'CENTER'),
+                    ('VALIGN', (0, 0), (-1, -1), 'MIDDLE'),
+                    ('FONTNAME', (1, 0), (1, 0), 'Helvetica-Bold'),
+                    ('FONTSIZE', (1, 0), (1, 0), 14),
+                ]))
+                elements.append(header_table)
+            else:
+                title_style = ParagraphStyle('CustomTitle', parent=styles['Heading1'], fontSize=14, textColor=colors.black, spaceAfter=12, alignment=1)
+                elements.append(Paragraph("FACTURA DE VENTA", title_style))
+            
+            elements.append(Spacer(1, 0.15 * inch))
+            
+            # Información de factura
+            info_data = [
+                ['No. FACTURA:', f"FES-{cliente_info['id_venta']:05d}", 'Fecha:', cliente_info['fecha_venta']],
+                ['Cliente:', cliente_info['nombre_cliente'], 'Hora:', cliente_info['hora_venta']],
+                ['Cédula:', cliente_info['cedula_cliente'], 'Método Pago:', cliente_info['metodo_pago']],
             ]
             
-            client_table = Table(client_data, colWidths=[2 * inch, 4 * inch])
-            client_table.setStyle(TableStyle([
-                ('BACKGROUND', (0, 0), (0, -1), colors.lightgrey),
-                ('TEXTCOLOR', (0, 0), (-1, -1), colors.black),
-                ('ALIGN', (0, 0), (-1, -1), 'LEFT'),
+            info_table = Table(info_data, colWidths=[1.2*inch, 2*inch, 1.2*inch, 1.6*inch])
+            info_table.setStyle(TableStyle([
                 ('FONTNAME', (0, 0), (0, -1), 'Helvetica-Bold'),
-                ('FONTSIZE', (0, 0), (-1, -1), 10),
-                ('BOTTOMPADDING', (0, 0), (-1, -1), 8),
-                ('GRID', (0, 0), (-1, -1), 1, colors.black),
+                ('FONTSIZE', (0, 0), (-1, -1), 9),
+                ('ALIGN', (0, 0), (-1, -1), 'LEFT'),
+                ('VALIGN', (0, 0), (-1, -1), 'MIDDLE'),
+                ('BOTTOMPADDING', (0, 0), (-1, -1), 4),
             ]))
             
-            elements.append(client_table)
-            elements.append(Spacer(1, 0.3 * inch))
+            elements.append(info_table)
+            elements.append(Spacer(1, 0.2 * inch))
             
             # Tabla de productos
-            product_data = [['ID', 'Producto', 'Código', 'Cantidad', 'Precio Unit.', 'Subtotal']]
+            product_data = [['Cant', 'Detalle', 'Valor Unit.', 'Total']]
+            total_general = 0
+            
             for p in productos:
+                producto_nombre = p.get('nombre_producto', p.get('codigo_barras', 'Producto'))
                 product_data.append([
-                    str(p['id_producto']),
-                    p['codigo_barras'],
-                    f"{p['cantidad']}",
+                    str(p['cantidad']),
+                    producto_nombre,
                     f"${p['precio_unitario']:.2f}",
                     f"${p['subtotal']:.2f}",
                 ])
+                total_general += p['subtotal']
             
-            product_table = Table(product_data, colWidths=[0.8*inch, 1.5*inch, 1.2*inch, 0.8*inch, 1*inch, 1*inch])
+            product_table = Table(product_data, colWidths=[0.6*inch, 3.5*inch, 1.2*inch, 1.1*inch])
             product_table.setStyle(TableStyle([
                 ('BACKGROUND', (0, 0), (-1, 0), colors.grey),
                 ('TEXTCOLOR', (0, 0), (-1, 0), colors.whitesmoke),
-                ('ALIGN', (0, 0), (-1, -1), 'CENTER'),
+                ('ALIGN', (0, 0), (-1, -1), 'RIGHT'),
+                ('ALIGN', (1, 0), (1, -1), 'LEFT'),
                 ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'),
                 ('FONTSIZE', (0, 0), (-1, -1), 9),
-                ('BOTTOMPADDING', (0, 0), (-1, -1), 8),
+                ('BOTTOMPADDING', (0, 0), (-1, -1), 6),
+                ('TOPPADDING', (0, 0), (-1, -1), 6),
                 ('GRID', (0, 0), (-1, -1), 1, colors.black),
+                ('ROWBACKGROUNDS', (0, 1), (-1, -1), [colors.white, colors.HexColor('#f5f5f5')]),
             ]))
             
             elements.append(product_table)
-            elements.append(Spacer(1, 0.2 * inch))
+            elements.append(Spacer(1, 0.15 * inch))
             
-            # Total
-            total_data = [['TOTAL A PAGAR', f"${cliente_info['total_venta']:.2f}"]]
-            total_table = Table(total_data, colWidths=[5*inch, 1.5*inch])
-            total_table.setStyle(TableStyle([
-                ('BACKGROUND', (0, 0), (-1, -1), colors.HexColor('#cccccc')),
-                ('TEXTCOLOR', (0, 0), (-1, -1), colors.black),
+            # Subtotal e IVA
+            subtotal_data = [
+                ['', '', 'Subtotal:', f"${total_general:.2f}"],
+                ['', '', 'Iva:', '$0'],
+                ['', '', 'TOTAL:', f"${cliente_info['total_venta']:.2f}"],
+            ]
+            
+            subtotal_table = Table(subtotal_data, colWidths=[0.6*inch, 3.5*inch, 1.2*inch, 1.1*inch])
+            subtotal_table.setStyle(TableStyle([
                 ('ALIGN', (0, 0), (-1, -1), 'RIGHT'),
-                ('FONTNAME', (0, 0), (-1, -1), 'Helvetica-Bold'),
-                ('FONTSIZE', (0, 0), (-1, -1), 12),
-                ('BOTTOMPADDING', (0, 0), (-1, -1), 10),
-                ('GRID', (0, 0), (-1, -1), 1, colors.black),
+                ('FONTNAME', (2, 0), (2, -1), 'Helvetica-Bold'),
+                ('FONTSIZE', (0, 0), (-1, -1), 9),
+                ('FONTSIZE', (2, 2), (-1, 2), 11),
+                ('FONTNAME', (2, 2), (-1, 2), 'Helvetica-Bold'),
+                ('BACKGROUND', (2, 2), (-1, 2), colors.HexColor('#cccccc')),
+                ('BOTTOMPADDING', (0, 0), (-1, -1), 4),
+                ('TOPPADDING', (0, 0), (-1, -1), 4),
             ]))
             
-            elements.append(total_table)
-            elements.append(Spacer(1, 0.3 * inch))
+            elements.append(subtotal_table)
+            elements.append(Spacer(1, 0.25 * inch))
+            
+            # QR simulado
+            try:
+                if QRCODE_AVAILABLE:
+                    qr_data = f"FES-{cliente_info['id_venta']:05d}|{cliente_info['nombre_cliente']}|{cliente_info['total_venta']:.2f}"
+                    qr = qrcode.QRCode(version=1, box_size=4, border=2)
+                    qr.add_data(qr_data)
+                    qr.make(fit=True)
+                    qr_img = qr.make_image(fill_color="black", back_color="white")
+                    
+                    qr_buffer = io.BytesIO()
+                    qr_img.save(qr_buffer, format='PNG')
+                    qr_buffer.seek(0)
+                    
+                    qr_image = Image(qr_buffer, width=1.2*inch, height=1.2*inch)
+                    qr_table = Table([[qr_image]], colWidths=[6*inch])
+                    qr_table.setStyle(TableStyle([('ALIGN', (0, 0), (0, 0), 'CENTER')]))
+                    elements.append(qr_table)
+            except Exception as e:
+                pass
+            
+            elements.append(Spacer(1, 0.1 * inch))
             
             # Pie de página
-            footer = Paragraph(
-                "Gracias por su compra",
-                ParagraphStyle('Footer', parent=styles['Normal'], fontSize=10, alignment=1, textColor=colors.grey)
-            )
-            elements.append(footer)
+            footer_style = ParagraphStyle('Footer', parent=styles['Normal'], fontSize=8, alignment=1, textColor=colors.grey)
+            elements.append(Paragraph("Gracias por su compra", footer_style))
             
             # Generar PDF
             doc.build(elements)
