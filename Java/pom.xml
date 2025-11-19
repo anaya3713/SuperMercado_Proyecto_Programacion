@@ -16,14 +16,11 @@
     </properties>
 
     <dependencies>
-        <!-- PostgreSQL JDBC -->
         <dependency>
             <groupId>org.postgresql</groupId>
             <artifactId>postgresql</artifactId>
             <version>42.7.1</version>
         </dependency>
-
-        <!-- JSON Processing -->
         <dependency>
             <groupId>com.google.code.gson</groupId>
             <artifactId>gson</artifactId>
@@ -49,7 +46,7 @@
                 <configuration>
                     <archive>
                         <manifest>
-                            <mainClass>com.supermercado.ConexionServer</mainClass>
+                            <mainClass>com.supermercado.ServidorConexion</mainClass>
                         </manifest>
                     </archive>
                 </configuration>
@@ -67,7 +64,7 @@
                         <configuration>
                             <archive>
                                 <manifest>
-                                    <mainClass>com.supermercado.ConexionServer</mainClass>
+                                    <mainClass>com.supermercado.ServidorConexion</mainClass>
                                 </manifest>
                             </archive>
                             <descriptorRefs>

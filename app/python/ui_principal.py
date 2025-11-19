@@ -1,174 +1,152 @@
 import tkinter as tk
 from tkinter import messagebox
 from pathlib import Path
-def run_app():
-    root = tk.Tk()
-    root.title("D2 Supermercado")
-    root.minsize(720, 600)
 
-    color_primary = "#3B00FF"
-    color_accent = "#FFFF00"
-    color_bg = "#F5F5F5"
-    color_card = "white"
-    color_text = "#000000"
-    color_muted = "#6B7280"
 
-    root.configure(bg=color_bg)
+def ejecutar_aplicacion():
+    raiz = tk.Tk()
+    raiz.title("D2 Supermercado")
+    raiz.minsize(720, 600)
+    color_primario = "#3B00FF"
+    color_resalte = "#FFFF00"
+    color_fondo = "#F5F5F5"
+    color_tarjeta = "white"
+    color_texto = "#111111"
+    color_neutro = "#6B7280"
+    raiz.configure(bg=color_fondo)
+    estado_pantalla = {"valor": False}
 
-    fullscreen_state = {"value": False}
+    def alternar_pantalla(_evento=None):
+        estado_pantalla["valor"] = not estado_pantalla["valor"]
+        raiz.attributes("-fullscreen", estado_pantalla["valor"])
 
-    def _toggle_fullscreen(_event=None):
-        fullscreen_state["value"] = not fullscreen_state["value"]
-        root.attributes("-fullscreen", fullscreen_state["value"])
+    def salir_pantalla(_evento=None):
+        estado_pantalla["valor"] = False
+        raiz.attributes("-fullscreen", False)
 
-    def _exit_fullscreen(_event=None):
-        fullscreen_state["value"] = False
-        root.attributes("-fullscreen", False)
-
-    root.bind("<F11>", _toggle_fullscreen)
-    root.bind("<Escape>", _exit_fullscreen)
-
-    main_frame = tk.Frame(root, bg=color_bg)
-    main_frame.pack(fill="both", expand=True)
-
-    header = tk.Frame(main_frame, bg=color_primary)
-    header.pack(fill="x", pady=(0, 16))
-
+    raiz.bind("<F11>", alternar_pantalla)
+    raiz.bind("<Escape>", salir_pantalla)
+    marco_principal = tk.Frame(raiz, bg=color_fondo)
+    marco_principal.pack(fill="both", expand=True)
+    cabecera = tk.Frame(marco_principal, bg=color_primario)
+    cabecera.pack(fill="x", pady=(0, 16))
     try:
         from PIL import Image, ImageTk  # type: ignore
 
-        logo_path = (
-            Path(__file__).resolve().parents[2] 
-            / "assets" 
+        ruta_logo = (
+            Path(__file__).resolve().parents[2]
+            / "assets"
             / "logo"
             / "Logo.png"
         )
-        if logo_path.exists():
-            img = Image.open(logo_path)
-            img.thumbnail((120, 120))
-            photo = ImageTk.PhotoImage(img)
-            logo_label = tk.Label(header, image=photo, bg=color_primary)
-            logo_label.image = photo
-            logo_label.pack(pady=(15, 4))
+        if ruta_logo.exists():
+            imagen = Image.open(ruta_logo)
+            imagen.thumbnail((120, 120))
+            foto = ImageTk.PhotoImage(imagen)
+            etiqueta_logo = tk.Label(cabecera, image=foto, bg=color_primario)
+            etiqueta_logo.image = foto
+            etiqueta_logo.pack(pady=(15, 4))
     except Exception:
         pass
-
-    title = tk.Label(
-        header,
+    tk.Label(
+        cabecera,
         text="D2 Supermercado",
         font=("Segoe UI", 22, "bold"),
-        bg=color_primary,
+        bg=color_primario,
         fg="white",
-    )
-    title.pack(pady=(4, 8))
+    ).pack(pady=(4, 8))
+    cuerpo = tk.Frame(marco_principal, bg=color_fondo)
+    cuerpo.pack(fill="both", expand=True, padx=32, pady=(16, 8))
 
-    content_frame = tk.Frame(main_frame, bg=color_bg)
-    content_frame.pack(fill="both", expand=True, padx=32, pady=(16, 8))
+    def crear_tarjeta(contenedor, titulo, descripcion, accion):
+        tarjeta = tk.Frame(contenedor, bg=color_tarjeta, bd=0)
+        tarjeta.pack(fill="x", pady=10)
 
-    def create_card(parent, title_text, description, command):
-        card = tk.Frame(
-            parent,
-            bg=color_card,
-            highlightthickness=0,
-            bd=0,
-        )
-        card.pack(fill="x", pady=10)
+        def resaltar(_evento):
+            tarjeta.configure(bg="#EEF2FF")
 
-        def on_enter(_event):
-            card.configure(bg="#EEF2FF")
+        def normalizar(_evento):
+            tarjeta.configure(bg=color_tarjeta)
 
-        def on_leave(_event):
-            card.configure(bg=color_card)
-
-        card.bind("<Enter>", on_enter)
-        card.bind("<Leave>", on_leave)
-
-        inner = tk.Frame(card, bg=color_card)
-        inner.pack(fill="x", padx=16, pady=12)
-
-        title_lbl = tk.Label(
-            inner,
-            text=title_text,
+        tarjeta.bind("<Enter>", resaltar)
+        tarjeta.bind("<Leave>", normalizar)
+        interior = tk.Frame(tarjeta, bg=color_tarjeta)
+        interior.pack(fill="x", padx=16, pady=12)
+        titulo_lbl = tk.Label(
+            interior,
+            text=titulo,
             font=("Segoe UI", 11, "bold"),
-            bg=color_card,
-            fg=color_text,
+            bg=color_tarjeta,
+            fg=color_texto,
             anchor="w",
         )
-        title_lbl.pack(fill="x")
-
-        desc_lbl = tk.Label(
-            inner,
-            text=description,
+        titulo_lbl.pack(fill="x")
+        descripcion_lbl = tk.Label(
+            interior,
+            text=descripcion,
             font=("Segoe UI", 9),
-            bg=color_card,
-            fg=color_muted,
+            bg=color_tarjeta,
+            fg=color_neutro,
             anchor="w",
             justify="left",
         )
-        desc_lbl.pack(fill="x", pady=(2, 0))
+        descripcion_lbl.pack(fill="x", pady=(2, 0))
 
-        def _click(_event=None):
-            command()
+        def ejecutar(_evento=None):
+            accion()
 
-        for widget in (card, inner, title_lbl, desc_lbl):
-            widget.bind("<Button-1>", _click)
+        for elemento in (tarjeta, interior, titulo_lbl, descripcion_lbl):
+            elemento.bind("<Button-1>", ejecutar)
 
-        return card
-
-    # Orden 
-    create_card(
-        content_frame,
-        "Caja (Facturacion)",
-        "Registrar ventas y generar comprobantes de forma rapida.",
-        lambda: open_caja(root),
+    crear_tarjeta(
+        cuerpo,
+        "Caja (Facturación)",
+        "Registrar ventas y generar comprobantes de forma rápida.",
+        lambda: abrir_caja(raiz),
     )
-
-    create_card(
-        content_frame,
+    crear_tarjeta(
+        cuerpo,
         "Inventario",
-        "Gestionar stock, productos y categorias del supermercado.",
-        lambda: open_inventario(root),
+        "Gestionar stock, productos y categorías del supermercado.",
+        lambda: abrir_inventario(raiz),
     )
-
-    create_card(
-        content_frame,
+    crear_tarjeta(
+        cuerpo,
         "Contabilidad",
         "Visualizar ingresos, costos y unidades vendidas por mes.",
-        lambda: open_contabilidad(root),
+        lambda: abrir_contabilidad(raiz),
     )
-
-    footer = tk.Frame(main_frame, bg=color_primary, height=24)
-    footer.pack(fill="x", side="bottom")
-
-    root.mainloop()
+    pie = tk.Frame(marco_principal, bg=color_primario, height=24)
+    pie.pack(fill="x", side="bottom")
+    raiz.mainloop()
 
 
-def open_contabilidad(parent):
+def abrir_contabilidad(padre):
     try:
         import ui_contabilidad as ui_contabilidad
 
-        ui_contabilidad.open_contabilidad(parent)
-    except Exception as e:
-        messagebox.showerror("Error", f"No se pudo abrir contabilidad:\n{e}")
+        ui_contabilidad.open_contabilidad(padre)
+    except Exception as error:
+        messagebox.showerror("Error", f"No se pudo abrir contabilidad:\n{error}")
 
 
-def open_inventario(parent):
+def abrir_inventario(padre):
     try:
         import ui_inventario as ui_inventario
 
-        ui_inventario.open_inventario(parent)
-    except Exception as e:
-        messagebox.showerror("Error", f"No se pudo abrir inventario:\n{e}")
+        ui_inventario.open_inventario(padre)
+    except Exception as error:
+        messagebox.showerror("Error", f"No se pudo abrir inventario:\n{error}")
 
 
-def open_caja(parent):
+def abrir_caja(padre):
     try:
         import ui_caja as ui_caja
 
-        ui_caja.open_caja(parent)
-    except Exception as e:
-        messagebox.showerror("Error", f"No se pudo abrir caja:\n{e}")
+        ui_caja.open_caja(padre)
+    except Exception as error:
+        messagebox.showerror("Error", f"No se pudo abrir caja:\n{error}")
 
 
 if __name__ == "__main__":
-    run_app()
+    ejecutar_aplicacion()

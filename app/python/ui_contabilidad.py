@@ -1,6 +1,7 @@
 import tkinter as tk
 from tkinter import ttk, messagebox
 from pathlib import Path
+from BaseWindow import VentanaBase
 
 try:
     from . import Conexion as Conexion  # type: ignore
@@ -11,208 +12,170 @@ try:
     from matplotlib.figure import Figure  # type: ignore
     from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg  # type: ignore
 
-    _HAS_MATPLOTLIB = True
+    MATPLOTLIB_DISPONIBLE = True
 except Exception:
-    _HAS_MATPLOTLIB = False
+    MATPLOTLIB_DISPONIBLE = False
+
+
+#Herencia (de VentanaBase)
+class VentanaContabilidad(VentanaBase):
+    def __init__(self, padre=None):
+        super().__init__(padre, "D2 Supermercado - Contabilidad")
+        self.valor_anio = tk.StringVar()
+        self.area_texto = None
+        self.marco_grafico = None
+
+    def _configurar_estilos(self):
+        super()._configurar_estilos()
+        estilo = ttk.Style(self.ventana)
+        estilo.configure(
+            "BotonClaro.TButton",
+            background=self.COLOR_PRIMARIO,
+            foreground="white",
+            borderwidth=0,
+            padding=(8, 4),
+        )
+        estilo.map("BotonClaro.TButton", background=[("active", self.COLOR_PRIMARIO)])
+        estilo.configure(
+            "EntradaClara.TEntry",
+            fieldbackground="white",
+            foreground=self.COLOR_TEXTO,
+        )
+
+    def _construir_interfaz(self):
+        self.ventana.geometry("900x640")
+        self._alternar_pantalla()
+        contenedor = tk.Frame(self.ventana, bg=self.COLOR_FONDO)
+        contenedor.pack(fill="both", expand=True, padx=18, pady=16)
+        self._construir_cabecera(contenedor)
+        self._construir_controles(contenedor)
+
+    def _construir_cabecera(self, contenedor):
+        cabecera = tk.Frame(contenedor, bg=self.COLOR_PRIMARIO)
+        cabecera.pack(fill="x")
+        interior = tk.Frame(cabecera, bg=self.COLOR_PRIMARIO)
+        interior.pack(fill="x", pady=6)
+        tk.Label(
+            interior,
+            text="Contabilidad Mensual",
+            font=("Segoe UI", 20, "bold"),
+            bg=self.COLOR_PRIMARIO,
+            fg="white",
+        ).pack(side="left", expand=True, padx=16)
+        try:
+            from PIL import Image, ImageTk  # type: ignore
+
+            ruta_logo = (
+                Path(__file__).resolve().parents[2]
+                / "assets"
+                / "logo"
+                / "Logo.png"
+            )
+            if ruta_logo.exists():
+                imagen = Image.open(ruta_logo)
+                imagen.thumbnail((64, 64))
+                foto = ImageTk.PhotoImage(imagen)
+                etiqueta = tk.Label(interior, image=foto, bg=self.COLOR_PRIMARIO)
+                etiqueta.image = foto
+                etiqueta.pack(side="right", padx=(8, 16))
+        except Exception:
+            pass
+
+    def _construir_controles(self, contenedor):
+        panel_superior = tk.Frame(contenedor, bg=self.COLOR_SUPERFICIE)
+        panel_superior.pack(fill="x", pady=(12, 10))
+        tk.Label(
+            panel_superior,
+            text="Año (opcional):",
+            bg=self.COLOR_SUPERFICIE,
+            fg=self.COLOR_TEXTO,
+        ).pack(side="left", padx=(10, 4), pady=8)
+        ttk.Entry(
+            panel_superior,
+            width=8,
+            textvariable=self.valor_anio,
+            style="EntradaClara.TEntry",
+        ).pack(side="left")
+        ttk.Button(
+            panel_superior,
+            text="Cargar",
+            command=self._cargar_datos,
+            style="BotonClaro.TButton",
+        ).pack(side="left", padx=8)
+        panel_contenido = tk.Frame(contenedor, bg=self.COLOR_FONDO)
+        panel_contenido.pack(fill="both", expand=True)
+        self.marco_grafico = tk.Frame(panel_contenido, bg=self.COLOR_SUPERFICIE)
+        self.marco_grafico.pack(side="left", fill="both", expand=True, padx=(0, 8))
+        contenedor_texto = tk.Frame(panel_contenido, bg=self.COLOR_SUPERFICIE, width=320)
+        contenedor_texto.pack(side="right", fill="y")
+        contenedor_texto.pack_propagate(False)
+        self.area_texto = tk.Text(
+            contenedor_texto,
+            bg=self.COLOR_SUPERFICIE,
+            fg=self.COLOR_TEXTO,
+            borderwidth=0,
+        )
+        self.area_texto.pack(fill="both", expand=True, padx=6, pady=6)
+
+    def _cargar_datos(self):
+        try:
+            texto_anio = self.valor_anio.get().strip()
+            anio = int(texto_anio) if texto_anio else None
+        except ValueError:
+            messagebox.showwarning("Contabilidad", "El año debe ser numérico")
+            return
+        try:
+            datos = Conexion.contabilidad(anio)
+        except Exception as error:
+            messagebox.showerror("Contabilidad", f"Error consultando datos:\n{error}")
+            return
+        self.area_texto.delete("1.0", tk.END)
+        for widget in self.marco_grafico.winfo_children():
+            widget.destroy()
+        if not datos:
+            self.area_texto.insert(tk.END, "No hay datos disponibles.\n")
+            return
+        for fila in datos:
+            self.area_texto.insert(
+                tk.END,
+                f"Mes: {fila['mes']}\n"
+                f"  Ingresos: {fila['total_ingresos']:.2f}\n"
+                f"  Costos: {fila['total_costos']:.2f}\n"
+                f"  Subtotales: {fila['total_subtotales']:.2f}\n"
+                f"  Unidades vendidas: {fila['total_unidades']}\n\n",
+            )
+        if not MATPLOTLIB_DISPONIBLE:
+            messagebox.showwarning(
+                "Contabilidad", "Matplotlib no está disponible. Instale la librería."
+            )
+            return
+        self._dibujar_grafico(datos)
+
+    def _dibujar_grafico(self, datos):
+        meses = [fila["mes"] for fila in datos]
+        ingresos = [fila["total_ingresos"] for fila in datos]
+        costos = [fila["total_costos"] for fila in datos]
+        figura = Figure(figsize=(6, 4), dpi=100)
+        eje = figura.add_subplot(111)
+        eje.plot(meses, ingresos, marker="o", label="Ingresos", color=self.COLOR_PRIMARIO)
+        eje.plot(meses, costos, marker="o", label="Costos", color="#EF4444")
+        eje.set_title("Ingresos y costos por mes", color=self.COLOR_TEXTO)
+        eje.set_xlabel("Mes", color=self.COLOR_TEXTO)
+        eje.set_ylabel("Valor", color=self.COLOR_TEXTO)
+        eje.grid(True, linestyle="--", alpha=0.3)
+        eje.legend()
+        for etiqueta in eje.get_xticklabels():
+            etiqueta.set_rotation(45)
+            etiqueta.set_color(self.COLOR_TEXTO)
+        for etiqueta in eje.get_yticklabels():
+            etiqueta.set_color(self.COLOR_TEXTO)
+        figura.patch.set_facecolor(self.COLOR_SUPERFICIE)
+        eje.set_facecolor(self.COLOR_FONDO)
+        lienzo = FigureCanvasTkAgg(figura, master=self.marco_grafico)  # type: ignore
+        lienzo.draw()
+        lienzo.get_tk_widget().pack(fill="both", expand=True, padx=6, pady=6)
 
 
 def open_contabilidad(parent=None):
-    if parent is None:
-        win = tk.Tk()
-        win.title("D2 Supermercado - Contabilidad")
-    else:
-        win = tk.Toplevel(parent)
-        win.title("D2 Supermercado - Contabilidad")
-
-    COLOR_PRIMARY = "#3B00FF"
-    COLOR_BG = "#F5F5F5"
-    COLOR_SURFACE = "white"
-    COLOR_HEADER = COLOR_PRIMARY
-    COLOR_TEXT = "#111827"
-
-    win.configure(bg=COLOR_BG)
-
-    # Pantalla completa por defecto
-    fullscreen_state = {"value": False}
-
-    def _toggle_fullscreen(_event=None):
-        fullscreen_state["value"] = not fullscreen_state["value"]
-        win.attributes("-fullscreen", fullscreen_state["value"])
-
-    def _exit_fullscreen(_event=None):
-        fullscreen_state["value"] = False
-        win.attributes("-fullscreen", False)
-
-    win.bind("<F11>", _toggle_fullscreen)
-    _toggle_fullscreen()
-
-    style = ttk.Style(win)
-    try:
-        style.theme_use("clam")
-    except Exception:
-        pass
-    style.configure(
-        "Dark.TButton",
-        background=COLOR_PRIMARY,
-        foreground="white",
-        borderwidth=0,
-        focusthickness=0,
-        padding=(8, 4),
-    )
-    style.map("Dark.TButton", background=[("active", COLOR_PRIMARY)])
-    style.configure(
-        "Dark.TEntry",
-        fieldbackground="white",
-        foreground=COLOR_TEXT,
-    )
-
-    frame = tk.Frame(win, bg=COLOR_BG)
-    frame.pack(fill="both", expand=True, padx=16, pady=16)
-
-    title_frame = tk.Frame(frame, bg=COLOR_HEADER)
-    title_frame.pack(fill="x", pady=(0, 10))
-
-    header_inner = tk.Frame(title_frame, bg=COLOR_HEADER)
-    header_inner.pack(fill="x", pady=4)
-
-    title_label = tk.Label(
-        header_inner,
-        text="Contabilidad Mensual",
-        font=("Segoe UI", 20, "bold"),
-        bg=COLOR_HEADER,
-        fg="white",
-        anchor="center",
-    )
-    title_label.pack(side="left", expand=True, padx=16, pady=8)
-
-    try:
-        from PIL import Image, ImageTk  # type: ignore
-
-        logo_path = (
-            Path(__file__).resolve().parents[2] 
-            / "assets" 
-            / "logo"
-            / "Logo.png"
-        )
-        if logo_path.exists():
-            img = Image.open(logo_path)
-            img.thumbnail((64, 64))
-            photo = ImageTk.PhotoImage(img)
-            logo_label = tk.Label(header_inner, image=photo, bg=COLOR_HEADER)
-            logo_label.image = photo
-            logo_label.pack(side="right", padx=(8, 16), pady=8)
-    except Exception:
-        pass
-
-    top = tk.Frame(frame, bg=COLOR_SURFACE)
-    top.pack(fill="x", pady=(10, 8))
-
-    tk.Label(top, text="Anio (opcional):", bg=COLOR_SURFACE, fg=COLOR_TEXT).pack(
-        side="left", padx=(10, 4), pady=8
-    )
-    year_var = tk.StringVar()
-    ttk.Entry(top, width=8, textvariable=year_var, style="Dark.TEntry").pack(
-        side="left", padx=4
-    )
-
-    btn = ttk.Button(top, text="Cargar", style="Dark.TButton")
-    btn.pack(side="left", padx=8)
-
-    content_frame = tk.Frame(frame, bg=COLOR_BG)
-    content_frame.pack(fill="both", expand=True, pady=(8, 0))
-
-    plot_frame = tk.Frame(content_frame, bg=COLOR_SURFACE)
-    plot_frame.pack(side="left", fill="both", expand=True, padx=(0, 8))
-
-    text_frame = tk.Frame(content_frame, bg=COLOR_SURFACE, width=320)
-    text_frame.pack(side="right", fill="y")
-    text_frame.pack_propagate(False)
-
-    text = tk.Text(
-        text_frame,
-        wrap="none",
-        height=10,
-        bg=COLOR_SURFACE,
-        fg=COLOR_TEXT,
-        borderwidth=0,
-        relief="flat",
-    )
-    text.pack(fill="both", expand=True, padx=4, pady=4)
-
-    canvas_holder = {"canvas": None}
-
-    def cargar():
-        try:
-            anio_txt = year_var.get().strip()
-            anio_val = int(anio_txt) if anio_txt else None
-            datos = Conexion.contabilidad(anio_val)
-
-            text.delete("1.0", tk.END)
-
-            for w in plot_frame.winfo_children():
-                w.destroy()
-
-            if not datos:
-                text.insert(tk.END, "No hay datos o ocurrio un error.\n")
-                return
-
-            for row in datos:
-                text.insert(tk.END, f"Mes: {row['mes']}\n")
-                text.insert(tk.END, f"  Ingresos: {row['total_ingresos']:.2f}\n")
-                text.insert(tk.END, f"  Costos: {row['total_costos']:.2f}\n")
-                text.insert(tk.END, f"  Subtotales: {row['total_subtotales']:.2f}\n")
-                text.insert(tk.END, f"  Unidades vendidas: {row['total_unidades']}\n\n")
-
-            if not _HAS_MATPLOTLIB:
-                messagebox.showwarning(
-                    "Matplotlib no disponible",
-                    "La libreria matplotlib no esta instalada.\nInstala con: pip install matplotlib",
-                )
-                return
-
-            meses = [r["mes"] for r in datos]
-            ingresos = [r["total_ingresos"] for r in datos]
-            costos = [r["total_costos"] for r in datos]
-
-            fig = Figure(figsize=(6, 4), dpi=100)
-            ax = fig.add_subplot(111)
-
-            ax.plot(meses, ingresos, marker="o", label="Ingresos", color=COLOR_PRIMARY)
-            ax.plot(meses, costos, marker="o", label="Costos", color="#EF4444")
-
-            ax.set_title("Ingresos y Costos por mes", color=COLOR_TEXT)
-            ax.set_xlabel("Mes", color=COLOR_TEXT)
-            ax.set_ylabel("Valor", color=COLOR_TEXT)
-            ax.grid(True, linestyle="--", alpha=0.3)
-            ax.legend()
-
-            for label in ax.get_xticklabels():
-                label.set_rotation(45)
-                label.set_color(COLOR_TEXT)
-            for label in ax.get_yticklabels():
-                label.set_color(COLOR_TEXT)
-
-            fig.patch.set_facecolor(COLOR_SURFACE)
-            ax.set_facecolor(COLOR_BG)
-
-            canvas = FigureCanvasTkAgg(fig, master=plot_frame)  # type: ignore
-            canvas.draw()
-            widget = canvas.get_tk_widget()
-            widget.pack(fill="both", expand=True, padx=4, pady=4)
-            canvas_holder["canvas"] = canvas
-
-        except Exception as e:
-            messagebox.showerror("Error", f"Error consultando contabilidad:\n{e}")
-
-    btn.configure(command=cargar)
-
-    if parent is not None:
-        win.transient(parent)
-        win.grab_set()
-        win.focus_force()
-    else:
-        win.mainloop()
-
-
-if __name__ == "__main__":
-    open_contabilidad()
+    ventana = VentanaContabilidad(parent)
+    ventana.mostrar()
